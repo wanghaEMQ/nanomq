@@ -51,7 +51,11 @@ put_pipe_msgs(client_ctx *sub_ctx, emq_work *self_work, struct pipe_content *pip
 	if (PUBLISH == cmd && sub_ctx != NULL) {
 		pipe_ct->pipe_info[pipe_ct->total].pipe = sub_ctx->pid.id;
 		pipe_ct->pipe_info[pipe_ct->total].qos  = sub_ctx->sub_pkt->node->it->qos;
-	} else {
+	} else if (PUBLISH == cmd && sub_ctx == NULL && self_work->pub_packet->fixed_header.qos == 1) {
+		// send puback
+		pipe_ct->pipe_info[pipe_ct->total].pipe = self_work->pid.id;
+		pipe_ct->pipe_info[pipe_ct->total].qos  = self_work->pub_packet->fixed_header.qos;
+	}else {
 		pipe_ct->pipe_info[pipe_ct->total].pipe = self_work->pid.id;
 		pipe_ct->pipe_info[pipe_ct->total].qos  = self_work->pub_packet->fixed_header.qos;
 	}
@@ -131,75 +135,74 @@ void
 handle_pub(emq_work *work, struct pipe_content *pipe_ct)
 {
 	char **topic_queue = NULL;
+	struct clients *client_list;
 
 	work->pub_packet = (struct pub_packet_struct *) nng_alloc(sizeof(struct pub_packet_struct));
 
 	reason_code result = decode_pub_message(work);
-	if (SUCCESS == result) {
-		debug_msg("decode message success");
-
-		switch (work->pub_packet->fixed_header.packet_type) {
-			case PUBLISH:
-				debug_msg("handling PUBLISH (qos %d)", work->pub_packet->fixed_header.qos);
-				topic_queue = topic_parse(work->pub_packet->variable_header.publish.topic_name.body);
-
-				switch (work->pub_packet->fixed_header.qos) {
-					case 0:
-						break;
-					case 1:
-						put_pipe_msgs(NULL, work, pipe_ct, PUBACK);
-						break;
-					case 2:
-						put_pipe_msgs(NULL, work, pipe_ct, PUBREC);
-						break;
-					default:
-						debug_msg("invalid qos: %d", work->pub_packet->fixed_header.qos);
-						break;
-				}
-
-				struct clients *client_list = search_client(work->db->root, topic_queue);
-
-				if (client_list != NULL) {
-					foreach_client(client_list, work, pipe_ct, handle_client_pipe_msgs);
-					free_clients(client_list);
-				}
-
-				debug_msg("pipe_info size: [%d]", pipe_ct->total);
-
-#if ENABLE_RETAIN
-				handle_pub_retain(work, (const char **) topic_queue);
-#endif
-
-				free_topic_queue(topic_queue);
-				break;
-
-			case PUBACK:
-				debug_msg("handling PUBACK");
-				//TODO
-				break;
-
-			case PUBREC:
-				debug_msg("handling PUBREC");
-				put_pipe_msgs(NULL, work, pipe_ct, PUBREL);
-				break;
-
-			case PUBREL:
-				debug_msg("handling PUBREL");
-				put_pipe_msgs(NULL, work, pipe_ct, PUBCOMP);
-				break;
-
-			case PUBCOMP:
-				debug_msg("handling PUBCOMP");
-				//TODO
-				break;
-
-			default:
-				break;
-		}
-
-	} else {
+	if (SUCCESS != result) {
 		debug_msg("decode message failed: %d", result);
 		//TODO send DISCONNECT with reason_code if MQTT Version=5.0
+	}
+	debug_msg("decode message success");
+
+	switch (work->pub_packet->fixed_header.packet_type) {
+		case PUBLISH:
+			debug_msg("handling PUBLISH (qos %d)", work->pub_packet->fixed_header.qos);
+			topic_queue = topic_parse(work->pub_packet->variable_header.publish.topic_name.body);
+
+			switch (work->pub_packet->fixed_header.qos) {
+				case 0:
+					break;
+				case 1:
+					put_pipe_msgs(NULL, work, pipe_ct, PUBACK);
+					break;
+				case 2:
+					put_pipe_msgs(NULL, work, pipe_ct, PUBREC);
+					break;
+				default:
+					debug_msg("invalid qos: %d", work->pub_packet->fixed_header.qos);
+					break;
+			}
+
+			client_list = search_client(work->db->root, topic_queue);
+
+			if (client_list != NULL) {
+				foreach_client(client_list, work, pipe_ct, handle_client_pipe_msgs);
+				free_clients(client_list);
+			}
+
+			debug_msg("pipe_info size: [%d]", pipe_ct->total);
+
+#if ENABLE_RETAIN
+			handle_pub_retain(work, (const char **) topic_queue);
+#endif
+
+			free_topic_queue(topic_queue);
+			break;
+
+		case PUBACK:
+			debug_msg("handling PUBACK");
+			//TODO
+			break;
+
+		case PUBREC:
+			debug_msg("handling PUBREC");
+			put_pipe_msgs(NULL, work, pipe_ct, PUBREL);
+			break;
+
+		case PUBREL:
+			debug_msg("handling PUBREL");
+			put_pipe_msgs(NULL, work, pipe_ct, PUBCOMP);
+			break;
+
+		case PUBCOMP:
+			debug_msg("handling PUBCOMP");
+			//TODO
+			break;
+
+		default:
+			break;
 	}
 }
 
@@ -324,13 +327,14 @@ append_bytes_with_type(nng_msg *msg, uint8_t type, uint8_t *content, uint32_t le
 }
 
 bool
-encode_pub_message(nng_msg *dest_msg, const emq_work *work, mqtt_control_packet_types cmd, uint8_t sub_qos, bool dup)
+encode_pub_message(nng_msg *dest_msg, const emq_work *work, mqtt_control_packet_types cmd, uint8_t qos, bool dup)
 {
 	uint8_t  tmp[4]     = {0};
 	uint32_t arr_len    = 0;
 	int      append_res = 0;
 
 	properties_type prop_type;
+	struct fixed_header tmp_fixed_header;
 
 	const uint8_t proto_ver = conn_param_get_protover(work->cparam);
 
@@ -342,11 +346,11 @@ encode_pub_message(nng_msg *dest_msg, const emq_work *work, mqtt_control_packet_
 		case PUBLISH:
 			/*fixed header*/
             nng_msg_set_cmd_type(dest_msg, CMD_PUBLISH);
-			work->pub_packet->fixed_header.packet_type = cmd;
-			work->pub_packet->fixed_header.qos = work->pub_packet->fixed_header.qos < sub_qos ?
-				work->pub_packet->fixed_header.qos : sub_qos;
-			work->pub_packet->fixed_header.dup = dup;
-			append_res = nng_msg_header_append(dest_msg, (uint8_t *) &work->pub_packet->fixed_header, 1);
+			tmp_fixed_header.packet_type = cmd;
+			tmp_fixed_header.dup = dup;
+			tmp_fixed_header.qos = qos;
+			tmp_fixed_header.retain = work->pub_packet->fixed_header.retain;
+			append_res = nng_msg_header_append(dest_msg, (uint8_t *) &tmp_fixed_header, 1);
 
 			arr_len    = put_var_integer(tmp, work->pub_packet->fixed_header.remain_len);
 			append_res = nng_msg_header_append(dest_msg, tmp, arr_len);
@@ -453,18 +457,34 @@ encode_pub_message(nng_msg *dest_msg, const emq_work *work, mqtt_control_packet_
 				append_res = nng_msg_append(dest_msg,
 					work->pub_packet->payload_body.payload,
 					work->pub_packet->payload_body.payload_len);
-//				debug_msg("payload [%s] len [%d]", (char *)work->pub_packet->payload_body.payload, work->pub_packet->payload_body.payload_len);
+				debug_msg("payload [%s] len [%d]", (char *)work->pub_packet->payload_body.payload, work->pub_packet->payload_body.payload_len);
 			}
 
 			debug_msg("after payload len in msg already [%ld]", nng_msg_len(dest_msg));
 			break;
 
-		case PUBREL:
-            nng_msg_set_cmd_type(dest_msg, CMD_PUBREL);
-            break;
 		case PUBACK:
-            nng_msg_set_cmd_type(dest_msg, CMD_PUBACK);
-            //break;
+			if (work->pub_packet->fixed_header.qos < 1) {
+				debug_msg("ERROR: puback but not qos 1.");
+				return false;
+			}
+			/*fixed header*/
+			tmp_fixed_header.packet_type = cmd;
+			tmp_fixed_header.qos = 0;
+			tmp_fixed_header.dup = dup;
+			tmp_fixed_header.retain = 0;
+			append_res = nng_msg_header_append(dest_msg, (uint8_t *) &tmp_fixed_header, 1);
+
+			arr_len    = put_var_integer(tmp, 2);
+			append_res = nng_msg_header_append(dest_msg, tmp, arr_len);
+
+			/*variable header*/
+			//identifier
+			nng_msg_append_u16(dest_msg, work->pub_packet->variable_header.publish.packet_identifier);
+			debug_msg("puback len in msg already [%ld]", nng_msg_len(dest_msg));
+			break;
+
+		case PUBREL:
 		case PUBREC:
             //nng_msg_set_cmd_type(dest_msg, CMD_PUBREC);
             //break;
@@ -651,7 +671,7 @@ decode_pub_message(emq_work *work)
 								if (pub_packet->variable_header.publish.properties.content.publish.response_topic.len == 0) {
 									pub_packet->variable_header.publish.properties.content.publish.response_topic.len =
 										get_utf8_str(&pub_packet->variable_header.publish.properties.content.publish.response_topic.body, msg_body, &pos);
-									i = i + pub_packet->variable_header.publish.properties.content.publish.content_type.len + 2;
+									i = i + pub_packet->variable_header.publish.properties.content.publish.response_topic.len + 2;
 								}
 								break;
 

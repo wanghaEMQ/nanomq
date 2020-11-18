@@ -267,7 +267,12 @@ server_cb(void *arg)
 
 					if (smsg == NULL) nng_msg_alloc(&smsg, 0);
 
-					work->pipe_ct->encode_msg(smsg, p_info.work, p_info.cmd, p_info.qos, 0);
+					if (work->pub_packet->fixed_header.qos == 1 && work->pipe_ct->current_index == 0) {
+						work->pipe_ct->encode_msg(smsg, p_info.work, PUBACK, 0, 0);
+					} else {
+						work->pipe_ct->encode_msg(smsg, p_info.work, p_info.cmd, work->pub_packet->fixed_header.qos, 0);
+					}
+
 					work->msg = smsg;
 					nng_aio_set_msg(work->aio, work->msg);
 					work->msg = NULL;
@@ -323,7 +328,11 @@ server_cb(void *arg)
 
 				if (smsg == NULL) nng_msg_alloc(&smsg, 0);
 
-				work->pipe_ct->encode_msg(smsg, p_info.work, p_info.cmd, p_info.qos, 0);
+				if (work->pub_packet->fixed_header.qos == 1 && work->pipe_ct->current_index == 0) {
+					work->pipe_ct->encode_msg(smsg, p_info.work, PUBACK, 0, 0);
+				} else {
+					work->pipe_ct->encode_msg(smsg, p_info.work, p_info.cmd, work->pub_packet->fixed_header.qos, 0);
+				}
 				work->msg = smsg;
 				nng_aio_set_msg(work->aio, work->msg);
 				work->msg = NULL;
