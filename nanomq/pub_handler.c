@@ -36,6 +36,8 @@ init_pipe_content(struct pipe_content *pipe_ct)
 	pipe_ct->pipe_info     = NULL;
 	pipe_ct->total         = 0;
 	pipe_ct->current_index = 0;
+	pipe_ct->finish_pipe_info = NULL;
+	pipe_ct->num_finish    = 0;
 	pipe_ct->encode_msg    = encode_pub_message;
 }
 
@@ -46,6 +48,9 @@ put_pipe_msgs(client_ctx *sub_ctx, emq_work *self_work, struct pipe_content *pip
 
 	pipe_ct->pipe_info = (struct pipe_info *) zrealloc(pipe_ct->pipe_info,
 		sizeof(struct pipe_info) * (pipe_ct->total + 1));
+	pipe_ct->finish_pipe_info = (uint8_t*) zrealloc(pipe_ct->finish_pipe_info,
+		pipe_ct->total + 1);
+	pipe_ct->finish_pipe_info[pipe_ct->total] = 0;
 
 	pipe_ct->pipe_info[pipe_ct->total].index = pipe_ct->total;
 	if (PUBLISH == cmd && sub_ctx != NULL) {
@@ -183,7 +188,18 @@ handle_pub(emq_work *work, struct pipe_content *pipe_ct)
 
 		case PUBACK:
 			debug_msg("handling PUBACK");
-			//TODO
+			debug_msg("pipe_id info [%d]", work->pid.id);
+			// TODO
+			// pipe_ct = hash_get_by_packet_id;
+			for (int i=0; i<pipe_ct->total; i++) {
+				if(pipe_ct->pipe_info[i].pipe == work->pid.id) {
+					pipe_ct->finish_pipe_info[i] = 1;
+					pipe_ct->num_finish ++;
+					break;
+				}
+			}
+			debug_msg("============num_finish [%d] total [%d]", pipe_ct->num_finish, pipe_ct->total);
+
 			break;
 
 		case PUBREC:
@@ -738,6 +754,9 @@ decode_pub_message(emq_work *work)
 			break;
 
 		case PUBACK:
+			NNI_GET16(msg_body, pub_packet->variable_header.publish.packet_identifier);
+			debug_msg("identifier: [%d]", pub_packet->variable_header.publish.packet_identifier);
+
 		case PUBREC:
 		case PUBREL:
 		case PUBCOMP:

@@ -105,6 +105,8 @@ struct pipe_content {
 	uint32_t current_index;
 	bool (*encode_msg)(nng_msg *, const emq_work *, mqtt_control_packet_types, uint8_t, bool);
 	struct pipe_info *pipe_info;
+	uint8_t *finish_pipe_info;
+	uint32_t num_finish;
 };
 
 typedef void (*handle_client)(struct client *sub_client, emq_work *pub_work, struct pipe_content *pipe_ct);

@@ -48,8 +48,6 @@ struct nano_ctx {
 	nni_duration   retry;
 	//size_t        pp_len;			//property Header
 	//uint32_t      pp[NNI_EMQ_MAX_PROPERTY_SIZE + 1];
-	nni_timer_node timer;
-	nni_atomic_int nano_time;
 };
 
 // nano_sock is our per-socket protocol private structure.
@@ -628,6 +626,14 @@ nano_pipe_send_cb(void *arg)
 		return;
 	}
 
+	/* TODO retry? right?
+	if (ctx->retry < 3) {
+		nni_timer_cancel(&ctx->qos_timer);
+		nni_timer_schedule(&ctx->qos_timer, nni_clock() + NNI_SECOND);
+		ctx->retry ++;
+	}
+	*/
+
 	nni_list_remove(&p->sendq, ctx);
 	aio        = ctx->saio;
 	ctx->saio  = NULL;
@@ -808,6 +814,7 @@ nano_pipe_recv_cb(void *arg)
               p ,p->id, nng_msg_cmd_type(msg), *header, *(header+1), nng_msg_header_len(msg));
 	//ttl = nni_atomic_get(&s->ttl);
 	nni_msg_set_pipe(msg, p->id);
+
 	nni_mtx_lock(&s->lk);
     p->ka_refresh = true;
 	//TODO HOOK

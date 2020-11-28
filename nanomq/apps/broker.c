@@ -342,7 +342,8 @@ server_cb(void *arg)
 				}
 
 				work->pipe_ct->current_index++;
-				if (work->pipe_ct->total == work->pipe_ct->current_index) {
+				if (work->pipe_ct->total == work->pipe_ct->current_index &&
+					work->pub_packet->fixed_header.qos == 0) {
 					free_pub_packet(work->pub_packet);
 					free_pipes_info(work->pipe_ct->pipe_info);
 					init_pipe_content(work->pipe_ct);
