@@ -160,6 +160,7 @@ handle_pub(emq_work *work, struct pipe_content *pipe_ct)
 				case 0:
 					break;
 				case 1:
+					add_packetid_pipe_content(work->pub_packet->variable_header.publish.packet_identifier, pipe_ct);
 					put_pipe_msgs(NULL, work, pipe_ct, PUBACK);
 					break;
 				case 2:
@@ -190,7 +191,7 @@ handle_pub(emq_work *work, struct pipe_content *pipe_ct)
 			debug_msg("handling PUBACK");
 			debug_msg("pipe_id info [%d]", work->pid.id);
 			// TODO
-			// pipe_ct = hash_get_by_packet_id;
+			pipe_ct = (struct pipe_content *)get_packetid_pipe_content(work->pub_packet->variable_header.puback.packet_identifier);
 			for (int i=0; i<pipe_ct->total; i++) {
 				if(pipe_ct->pipe_info[i].pipe == work->pid.id) {
 					pipe_ct->finish_pipe_info[i] = 1;
@@ -754,8 +755,8 @@ decode_pub_message(emq_work *work)
 			break;
 
 		case PUBACK:
-			NNI_GET16(msg_body, pub_packet->variable_header.publish.packet_identifier);
-			debug_msg("identifier: [%d]", pub_packet->variable_header.publish.packet_identifier);
+			NNI_GET16(msg_body, pub_packet->variable_header.puback.packet_identifier);
+			debug_msg("identifier: [%d]", pub_packet->variable_header.puback.packet_identifier);
 
 		case PUBREC:
 		case PUBREL:

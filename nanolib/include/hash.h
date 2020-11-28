@@ -60,6 +60,14 @@ bool check_msg_queue_clientid(char *id);
 
 struct msg_queue * get_msg_queue(char *id);
 
+// @obj. _packetid_pipe_content_hash
+
+void add_packetid_pipe_content(uint16_t id, void *pipe_ct);
+
+bool check_packetid_pipe_content(uint16_t id);
+
+void * get_packetid_pipe_content(uint16_t id);
+
 #ifdef __cplusplus
 }
 #endif

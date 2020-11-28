@@ -405,3 +405,44 @@ struct msg_queue * get_msg_queue(char *id)
 	return NULL;
 }
 
+/*
+ * @obj. _packetid_pipe_content_hash.
+ * @key. packetid.
+ * @val. pipe_content.
+ * Store the info about pub when qos = 1
+ */
+
+mqtt_hash<uint16_t, void *> _packetid_pipe_content_hash;
+
+/*
+ * @obj. _packetid_pipe_content_hash
+ */
+
+void add_packetid_pipe_content(uint16_t id, void *pipe_ct)
+{
+	if (pipe_ct != NULL && id != 0) {
+		_packetid_pipe_content_hash[id] = pipe_ct;
+	}
+}
+
+/*
+ * @obj. _packetid_pipe_content_hash
+ */
+
+bool check_packetid_pipe_content(uint16_t id)
+{
+	return _packetid_pipe_content_hash.find(id);
+}
+
+/*
+ * @obj. _packetid_pipe_content_hash
+ */
+
+void * get_packetid_pipe_content(uint16_t id)
+{
+	if(check_packetid_pipe_content(id)){
+		return _packetid_pipe_content_hash[id];
+	}
+	return NULL;
+}
+
