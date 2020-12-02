@@ -21,6 +21,8 @@ void init_sub_property(packet_subscribe * sub_pkt)
 	sub_pkt->sub_id.varint = 0;
 	sub_pkt->user_property.strpair.len_key = 0;
 	sub_pkt->user_property.strpair.len_val = 0;
+	sub_pkt->user_property.strpair.key = NULL;
+	sub_pkt->user_property.strpair.val = NULL;
 }
 
 uint8_t decode_sub_message(emq_work * work)

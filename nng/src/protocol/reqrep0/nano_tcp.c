@@ -151,7 +151,6 @@ nano_ctx_fini(void *arg)
 {
 	nano_ctx *ctx = arg;
 
-	nni_timer_cancel(&ctx->timer);
 	nano_ctx_close(ctx);
 
     //timer
@@ -176,21 +175,9 @@ nano_ctx_init(void *carg, void *sarg)
 	ctx->sock       = s;
 	ctx->pipe_id    = 0;
 
-	nni_atomic_init(&ctx->nano_time);
-	nni_atomic_set(&ctx->nano_time, 5*NNI_SECOND);
-	nni_timer_init(&ctx->timer, nano_ctx_timeout, ctx);
 	return (0);
 }
 
-void nano_ctx_timeout(void * arg)
-{
-	nano_ctx * ctx = arg;
-	nano_sock *s   = ctx->sock;
-
-	nni_mtx_lock(&s->lk);
-	debug_msg("--------------timeout------------");
-	nni_mtx_unlock(&s->lk);
-}
 
 static void
 nano_ctx_cancel_send(nni_aio *aio, void *arg, int rv)

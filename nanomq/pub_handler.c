@@ -189,8 +189,7 @@ handle_pub(emq_work *work, struct pipe_content *pipe_ct)
 
 		case PUBACK:
 			debug_msg("handling PUBACK");
-			debug_msg("pipe_id info [%d]", work->pid.id);
-			// TODO
+			/*
 			pipe_ct = (struct pipe_content *)get_packetid_pipe_content(work->pub_packet->variable_header.puback.packet_identifier);
 			for (int i=0; i<pipe_ct->total; i++) {
 				if(pipe_ct->pipe_info[i].pipe == work->pid.id) {
@@ -200,6 +199,7 @@ handle_pub(emq_work *work, struct pipe_content *pipe_ct)
 				}
 			}
 			debug_msg("============num_finish [%d] total [%d]", pipe_ct->num_finish, pipe_ct->total);
+			*/
 
 			break;
 
@@ -362,7 +362,7 @@ encode_pub_message(nng_msg *dest_msg, const emq_work *work, mqtt_control_packet_
 	switch (cmd) {
 		case PUBLISH:
 			/*fixed header*/
-            nng_msg_set_cmd_type(dest_msg, CMD_PUBLISH);
+			nng_msg_set_cmd_type(dest_msg, CMD_PUBLISH);
 			tmp_fixed_header.packet_type = cmd;
 			tmp_fixed_header.dup = dup;
 			tmp_fixed_header.qos = qos;
