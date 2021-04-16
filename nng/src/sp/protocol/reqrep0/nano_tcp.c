@@ -697,20 +697,48 @@ nano_pipe_recv_cb(void *arg)
 	}
 
 	header = nng_msg_header(msg);
-	debug_msg("start nano_pipe_recv_cb pipe: %p p_id %d TYPE: %x ===== "
-	          "header: %x %x header len: %zu\n",
-	    p, p->id, nng_msg_cmd_type(msg), *header, *(header + 1),
-	    nng_msg_header_len(msg));
+	debug_msg("start nano_pipe_recv_cb pipe: %p"
+	          "p_id %d TYPE: %x ===== "
+	          "header: %x %x"
+	          "header len: %zu\n",
+	    p, p->id, nng_msg_cmd_type(msg), *header,
+		*(header + 1), nng_msg_header_len(msg));
 	// ttl = nni_atomic_get(&s->ttl);
 	nni_msg_set_pipe(msg, p->id);
 	p->ka_refresh = 0;
+
+	if (p->closed) {
+		// If we are closed, then we can't return data.
+		nni_aio_set_msg(&p->aio_recv, NULL);
+		nni_msg_free(msg);
+		debug_msg("ERROR: pipe is closed abruptly!!");
+		return;
+	}
+
+	nni_mtx_lock(&s->lk);
+	if ((ctx = nni_list_first(&s->recvq)) == NULL) {
+		// No one waiting to receive yet, holding pattern.
+		nni_list_append(&s->recvpipes, p);
+		nni_pollable_raise(&s->readable);
+		nni_mtx_unlock(&s->lk);
+		debug_msg("ERROR: no ctx found!! create more ctxs!");
+		// nni_println("ERROR: no ctx found!! create more ctxs!");
+		return;
+	}
+
+	nni_list_remove(&s->recvq, ctx);
+	aio       = ctx->raio;
+	ctx->raio = NULL;
+
+	db_tree * db_tree = nni_aio_get_dbtree(aio);
+	fprintf(stderr, "nano aio [%p] tree [%p]\n", aio, db_tree);
 	// TODO HOOK
 	switch (nng_msg_cmd_type(msg)) {
 	case CMD_SUBSCRIBE:
 		// TODO put hash table to tcp layer
 		nni_mtx_lock(&p->lk);
-		pipe_db = nano_msg_get_subtopic(
-		    msg); // TODO potential memleak when sub failed
+		// TODO potential memleak when sub failed
+		pipe_db = nano_msg_get_subtopic(msg);
 		p->pipedb_root = pipe_db;
 		while (pipe_db) {
 			rv = nni_id_set(
@@ -737,28 +765,6 @@ nano_pipe_recv_cb(void *arg)
 		goto drop;
 	}
 
-	if (p->closed) {
-		// If we are closed, then we can't return data.
-		nni_aio_set_msg(&p->aio_recv, NULL);
-		nni_msg_free(msg);
-		debug_msg("ERROR: pipe is closed abruptly!!");
-		return;
-	}
-
-	nni_mtx_lock(&s->lk);
-	if ((ctx = nni_list_first(&s->recvq)) == NULL) {
-		// No one waiting to receive yet, holding pattern.
-		nni_list_append(&s->recvpipes, p);
-		nni_pollable_raise(&s->readable);
-		nni_mtx_unlock(&s->lk);
-		debug_msg("ERROR: no ctx found!! create more ctxs!");
-		// nni_println("ERROR: no ctx found!! create more ctxs!");
-		return;
-	}
-
-	nni_list_remove(&s->recvq, ctx);
-	aio       = ctx->raio;
-	ctx->raio = NULL;
 	nni_aio_set_msg(&p->aio_recv, NULL);
 	if ((ctx == &s->ctx) && !p->busy) {
 		nni_pollable_raise(&s->writable);

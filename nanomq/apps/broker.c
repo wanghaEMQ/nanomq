@@ -76,6 +76,7 @@ server_cb(void *arg)
 		debug_msg(
 		    "INIT ^^^^^^^^^^^^^^^^^^^^^ ctx%d ^^^^\n", work->ctx.id);
 		work->state = RECV;
+		fprintf(stderr, "app  aio [%p] tree [%p]\n", work->aio, work->db);
 		nng_ctx_recv(work->ctx, work->aio);
 		break;
 	case RECV:
